@@ -113,7 +113,7 @@ class SWAGInference(object):
         model_dir: pathlib.Path,
         # TODO(1): change inference_mode to InferenceMode.SWAG_DIAGONAL
         # TODO(2): change inference_mode to InferenceMode.SWAG_FULL
-        inference_mode: InferenceMode = InferenceMode.SWAG_DIAGONAL,
+        inference_mode: InferenceMode = InferenceMode.SWAG_FULL,
         # TODO(2): optionally add/tweak hyperparameters
         swag_epochs: int = 30,
         swag_learning_rate: float = 0.045,
@@ -340,6 +340,10 @@ class SWAGInference(object):
         """
 
         # Instead of acting on a full vector of parameters, all operations can be done on per-layer parameters.
+        
+        if self.inference_mode == InferenceMode.SWAG_FULL:
+            z_2 = torch.randn(len(self.SWA_D))
+
         for name, param in self.network.named_parameters():
             # SWAG-diagonal part
             z_1 = torch.randn(param.size())
@@ -357,7 +361,9 @@ class SWAGInference(object):
             if self.inference_mode == InferenceMode.SWAG_FULL:
                 # TODO(2): Sample parameter values for full SWAG
                 # raise NotImplementedError("Sample parameter for full SWAG")
-                sampled_param = current_mean + current_std * z_1 / torch.sqrt(2) + sum([col[name] * torch.randn() for col in self.SWA_D]) / torch.sqrt(2 * (self.deviation_matrix_max_rank - 1))
+                
+                sampled_param = current_mean + 1 / math.sqrt(2) * current_std * z_1 + 1 / math.sqrt(2 * (self.deviation_matrix_max_rank - 1)) * sum([col[name] * z_2[i] for i, col in enumerate(self.SWA_D)])
+
 
             # Modify weight value in-place; directly changing self.network
             param.data = sampled_param
