@@ -1,5 +1,5 @@
 import abc
-import collections
+from collections import deque
 import enum
 import math
 import pathlib
@@ -160,6 +160,9 @@ class SWAGInference(object):
         # Full SWAG
         # TODO(2): create attributes for SWAG-diagonal
         #  Hint: check collections.deque
+        if self.inference_mode == InferenceMode.SWAG_FULL:
+            self.SWA_D = deque(maxlen=self.deviation_matrix_max_rank)
+            self.SWA_D_temp_col = {}
 
         # Calibration, prediction, and other attributes
         # TODO(2): create additional attributes, e.g., for calibration
@@ -181,10 +184,14 @@ class SWAGInference(object):
             self.SWA_avg[name] = (self.SWA_avg[name]*n + param)/(n+1)
             self.SWA2_avg[name] = (self.SWA2_avg[name]*n + param**2)/(n+1)
 
+            if self.inference_mode == InferenceMode.SWAG_FULL:
+                self.SWA_D_temp_col[name] = param - self.SWA_avg[name]
+
         # Full SWAG
         if self.inference_mode == InferenceMode.SWAG_FULL:
             # TODO(2): update full SWAG attributes for weight `name` using `current_params` and `param`
-            raise NotImplementedError("Update full SWAG statistics")
+            self.SWA_D.append(self.SWA_D_temp_col)
+            self.SWA_D_temp_col = {}
 
     def fit_swag(self, loader: torch.utils.data.DataLoader) -> None:
         """
@@ -321,8 +328,6 @@ class SWAGInference(object):
         # TODO(1): Average predictions from different model samples into bma_probabilities
         # raise NotImplementedError("Aggregate predictions from model samples")
         bma_probabilities = torch.mean(per_model_sample_predictions, dim=0)
-        print(bma_probabilities.shape)
-        print(bma_probabilities[0:2])
 
         assert bma_probabilities.dim() == 2 and bma_probabilities.size(1) == 6  # N x C
         return bma_probabilities
@@ -345,18 +350,14 @@ class SWAGInference(object):
             assert current_mean.size() == param.size() and current_std.size() == param.size()
 
             # Diagonal part
-            sampled_param = current_mean + current_std * z_1
-
-            print("#####")
-            print(name)
-            print(sampled_param.shape)
-            print("############")
+            if self.inference_mode == InferenceMode.SWAG_DIAGONAL:
+                sampled_param = current_mean + current_std * z_1
 
             # Full SWAG part
             if self.inference_mode == InferenceMode.SWAG_FULL:
                 # TODO(2): Sample parameter values for full SWAG
-                raise NotImplementedError("Sample parameter for full SWAG")
-                sampled_param += ...
+                # raise NotImplementedError("Sample parameter for full SWAG")
+                sampled_param = current_mean + current_std * z_1 / torch.sqrt(2) + sum([col[name] * torch.randn() for col in self.SWA_D]) / torch.sqrt(2 * (self.deviation_matrix_max_rank - 1))
 
             # Modify weight value in-place; directly changing self.network
             param.data = sampled_param
